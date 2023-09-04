@@ -1,6 +1,0 @@
-dependencies:
-- name: simphera-helm-templates
-  repository: file://../simphera-helm-templates
-  version: 23.3-2023-05-26-1639-1
-digest: sha256:1e01252121c2ad4c7823791268d101784dbe04a338a94553854f94370bce2c39
-generated: "2023-05-26T14:40:54.593213083Z"
