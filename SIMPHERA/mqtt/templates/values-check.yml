@@ -1,0 +1,15 @@
+{{ if .Values.global.simphera.mqtt.secret }}
+  {{ if .Values.global.simphera.mqtt.username }}
+    {{ fail "You must not set both 'global.simphera.mqtt.username' and 'global.simphera.mqtt.secret'."}}
+  {{ end }}
+  {{ if .Values.global.simphera.mqtt.password }}
+    {{ fail "You must not set both 'global.simphera.mqtt.password' and 'global.simphera.mqtt.secret'."}}
+  {{ end }}
+{{ else }}
+  {{ if not .Values.global.simphera.mqtt.username }}
+    {{ fail "You must specify an MQTT username in 'global.simphera.mqtt.username' or you have to specify the credentials using a secret and set the secret name in 'global.simphera.mqtt.secret'."}}
+  {{ end }}
+  {{ if not .Values.global.simphera.mqtt.password }}
+    {{ fail "You must specify an MQTT password in 'global.simphera.mqtt.password' or you have to specify the credentials using a secret and set the secret name in 'global.simphera.mqtt.secret'."}}
+  {{ end }}
+{{ end }}

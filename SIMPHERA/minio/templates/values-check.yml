@@ -1,0 +1,97 @@
+{{ if .Values.global.simphera.minio.enabled }}
+
+# Hostname
+{{ if not .Values.global.simphera.hostnames.minio }}
+  {{ fail "You must specify the hostname for MinIO in 'global.simphera.hostnames.minio'."}}
+{{ end }}
+
+# Certificate
+{{ if and .Values.global.simphera.ingress.sslRedirect (not .Values.global.simphera.tlsCertificates.minio) }}
+  {{ fail "Required value not set: global.simphera.tlsCertificates.minio" }}
+{{ end }}
+
+# Authentication
+{{ if .Values.global.simphera.minio.adminSecret }}
+  {{ if .Values.global.simphera.minio.adminUser }}
+    {{ fail "You must not specify both 'global.simphera.minio.adminSecret' and 'global.simphera.minio.adminUser'."}}
+  {{ end }}
+  {{ if .Values.global.simphera.minio.adminPassword }}
+    {{ fail "You must not specify both 'global.simphera.minio.adminSecret' and 'global.simphera.minio.adminPassword'."}}
+  {{ end }}
+{{ else }}
+  {{ if not .Values.global.simphera.minio.adminUser }}
+    {{ fail "The value 'global.simphera.minio.adminUser' must be specified."}}
+  {{ end }}
+  {{ if not .Values.global.simphera.minio.adminPassword }}
+    {{ fail "The value 'global.simphera.minio.adminPassword' must be specified."}}
+  {{ end }}
+{{ end }}
+
+# Modes
+{{ if and (ne .Values.global.simphera.minio.mode "persistent-volume") (ne .Values.global.simphera.minio.mode "azure") (ne .Values.global.simphera.minio.mode "aws") }}
+  {{ fail "The value global.simphera.minio.mode must either be 'persistent-volume', 'azure' or 'aws'." }}
+{{ end }}
+
+# Persistent Volume
+{{ if eq .Values.global.simphera.minio.mode "persistent-volume" }}
+  {{ if not .Values.global.simphera.minio.storageClass }}
+    {{ fail "The value 'global.simphera.minio.storageClass' must be specified for mode 'persistent-volume'."}}
+  {{ end }}
+  {{ if not .Values.global.simphera.minio.storageSize }}
+    {{ fail "The value 'global.simphera.minio.storageSize' must be specified for mode 'persistent-volume'."}}
+  {{ end }}
+{{ end }}
+
+# Azure
+{{ if eq .Values.global.simphera.minio.mode "azure" }}
+  {{ if .Values.global.simphera.minio.azureStorageSecret }}
+    {{ if .Values.global.simphera.minio.azureStorageAccount }}
+      {{ fail "You must not specify both 'global.simphera.minio.azureStorageSecret' and 'global.simphera.minio.azureStorageAccount'."}}
+    {{ end }}
+    {{ if .Values.global.simphera.minio.azureStorageKey }}
+      {{ fail "You must not specify both 'global.simphera.minio.azureStorageSecret' and 'global.simphera.minio.azureStorageKey'."}}
+    {{ end }}
+  {{ else }}
+    {{ if not .Values.global.simphera.minio.azureStorageAccount }}
+      {{ fail "The value 'global.simphera.minio.azureStorageAccount' must be specified."}}
+    {{ end }}
+    {{ if not .Values.global.simphera.minio.azureStorageKey }}
+      {{ fail "The value 'global.simphera.minio.azureStorageKey' must be specified."}}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+
+# AWS
+{{ if eq .Values.global.simphera.minio.mode "aws" }}
+  {{ if .Values.global.simphera.minio.enabledIrsa }}
+      {{ if .Values.global.simphera.minio.s3AccessKeyId }}
+        {{ fail "You must not specify both 'global.simphera.minio.enabledIrsa: true' and 'global.simphera.minio.s3AccessKeyId'."}}
+      {{ end }}
+      {{ if .Values.global.simphera.minio.s3SecretAccessKey }}
+        {{ fail "You must not specify both 'global.simphera.minio.enabledIrsa: true' and 'global.simphera.minio.s3SecretAccessKey'."}}
+      {{ end }}
+      {{ if .Values.global.simphera.minio.s3Secret }}
+        {{ fail "You must not specify both 'global.simphera.minio.enabledIrsa: true' and 'global.simphera.minio.s3Secret'."}}
+      {{ end }}
+  {{ else }}
+    {{ if .Values.global.simphera.minio.s3Secret }}
+      {{ if .Values.global.simphera.minio.s3AccessKeyId }}
+        {{ fail "You must not specify both 'global.simphera.minio.s3Secret' and 'global.simphera.minio.s3AccessKeyId'."}}
+      {{ end }}
+      {{ if .Values.global.simphera.minio.s3SecretAccessKey }}
+        {{ fail "You must not specify both 'global.simphera.minio.s3Secret' and 'global.simphera.minio.s3SecretAccessKey'."}}
+      {{ end }}
+    {{ else }}
+      {{ if not .Values.global.simphera.minio.s3AccessKeyId }}
+        {{ fail "The value 'global.simphera.minio.s3AccessKeyId' must be specified."}}
+      {{ end }}
+      {{ if not .Values.global.simphera.minio.s3SecretAccessKey }}
+        {{ fail "The value 'global.simphera.minio.s3SecretAccessKey' must be specified."}}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+{{ end }}
+

@@ -1,0 +1,8 @@
+apiVersion: v2
+dependencies:
+- name: simphera-helm-templates
+  repository: file://../simphera-helm-templates
+  version: '>= 0.0.0-0'
+description: Keycloak used for SIMPHERA.
+name: keycloak
+version: 23.3-2023-05-26-1639-1

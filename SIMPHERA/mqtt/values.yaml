@@ -1,0 +1,63 @@
+## Global Docker image parameters
+## Please, note that this will override the image parameters, including dependencies, configured to use the global value
+global:
+  simphera:
+    image:
+      registry:
+
+      ## ref: https://kubernetes.io/docs/concepts/containers/images/#updating-images
+      # IfNotPresent, Always
+      pullPolicy: IfNotPresent
+
+      ## Optionally specify an array of imagePullSecrets.
+      ## Secrets must be manually created in the namespace.
+      ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+      pullSecrets: []
+      #  - myRegistryKeySecretName
+
+      thirdparty:
+        # It is intented that the repository is set to 'null' because the single source of the
+        # default value is the values.yaml file of the Quickstart chart.
+        mosquitto: null
+
+    linuxNodes:
+      ## Node labels for linux pod assignment
+      ## https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+      nodeSelector:
+        kubernetes.io/os: linux
+
+      ## Taints to be tolerated for Pod assignment.
+      ## Example:
+      ##   - key: "toleration=key"
+      ##     operator: "Equal"
+      ##     value: "value"
+      ##     effect: "NoSchedule"
+      ## https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      tolerations: []
+
+    hostnames:
+      simphera: null
+
+    mqtt:
+      ingress:
+        # An ingress can be created for the MQTT broker so that the broker is reachable
+        # from outside the kubernetes cluster. This is needed for the HIL use-case for example.
+        enabled: false
+
+      username:
+      password:
+
+    serviceAccounts:
+      simphera: null
+
+enabled: true
+
+replicas: 1
+
+resources:
+  requests:
+    memory: 500Mi
+    cpu: 200m
+  limits:
+    memory: 1Gi
+    cpu: 400m

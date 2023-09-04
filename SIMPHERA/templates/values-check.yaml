@@ -1,0 +1,11 @@
+## usernames and passwords
+
+# adminservice
+{{if .Values.simphera.adminservice.ingress.enabled }}
+  {{if not .Values.simphera.adminservice.credentials.username }}
+  {{ fail "Required value not set: simphera.adminservice.credentials.username" }}
+  {{end}}
+  {{if not .Values.simphera.adminservice.credentials.password }}
+  {{ fail "Required value not set: simphera.adminservice.credentials.password" }}
+  {{end}}
+{{end}}
