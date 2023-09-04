@@ -1,0 +1,44 @@
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.resultservice.datamigrationjob.image.tag -}}
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: result-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "result-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "result-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: result-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scbt/result/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "ResultDataMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Validation.Result.ResultDataMigrationJob.{{ $imagetagdatamigration }}"
+
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+
+

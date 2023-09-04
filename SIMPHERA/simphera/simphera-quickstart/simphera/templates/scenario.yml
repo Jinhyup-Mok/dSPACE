@@ -1,0 +1,484 @@
+{{- $appimagetag := default .Values.global.simphera.image.tag .Values.scenario.app.image.tag -}}
+{{- $gatewayimagetag := default .Values.global.simphera.image.tag .Values.scenario.gateway.image.tag -}}
+{{- $businesslogicimagetag := default .Values.global.simphera.image.tag .Values.scenario.businesslogic.image.tag -}}
+{{- $dataaccessimagetag := default .Values.global.simphera.image.tag .Values.scenario.dataaccess.image.tag -}}
+{{- $datamigrationimagetag := default .Values.global.simphera.image.tag .Values.scenario.datamigrationjob.image.tag -}}
+{{- $restapiimagetag := default .Values.global.simphera.image.tag .Values.scenario.restapi.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenario-app") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "scenario-app") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "scenario-app") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.frontendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: scenario-app
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scenario/frontend:{{ $appimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.frontendContainerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.frontendContainerResources" . | nindent 8 }}
+        ports:
+        - containerPort: 8080
+        {{- include "simphera.frontendContainerHealthChecks" . | nindent 8 }}
+        volumeMounts:
+        {{- include "simphera.nginx.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.nginx.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenario-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenario-app") | nindent 4 }}
+spec:
+  ports:
+  - name: scenario-app
+    port: 3001
+    targetPort: 8080
+  selector:
+    {{- include "simphera.selectorLabels" (list . "scenario-app") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scenario-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenario-app") | nindent 4 }}
+  annotations:
+    {{- include "simphera.frontendIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /remoteentry/scenarios
+        pathType: Prefix
+        backend:
+          service:
+            name: scenario-app
+            port:
+              name: scenario-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenariogateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariogateway") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "scenariogateway") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "scenariogateway") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: scenariogateway
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scenario/apigateway:{{ $gatewayimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.nodeGatewayContainerResources" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /.well-known/apollo/server-health
+            port: 4001
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /.well-known/apollo/server-health
+            port: 4001
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        ports:
+        - containerPort: 4001
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | nindent 8 }}
+        {{- include "simphera.addStorageByName" (dict "context" .Values "storageName" .Values.scenario.storageName ) | indent 8 }}
+        {{- include "simphera.customRootCertificates.environmentVariables" . | nindent 8 }}
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/opt/app-root/build/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenariogateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariogateway") | nindent 4 }}
+spec:
+  ports:
+  - name: scenariogateway
+    port: 4001
+    protocol: TCP
+    targetPort: 4001
+  selector:
+    {{- include "simphera.selectorLabels" (list . "scenariogateway") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scenario
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenario") | nindent 4 }}
+  annotations:
+    {{- include "simphera.apiGatewayIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /gateway/scenario
+        pathType: Prefix
+        backend:
+          service:
+            name: scenariogateway
+            port:
+              name: scenariogateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenariobusinesslogic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariobusinesslogic") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "scenariobusinesslogic") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "scenariobusinesslogic") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: scenariobusinesslogic
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scenario/businesslogic:{{ $businesslogicimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.nodeBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:5001"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:5001"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.addStorageByName" (dict "context" .Values "storageName" .Values.scenario.storageName ) | indent 8 }}
+        {{- include "simphera.customRootCertificates.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.scenario.businesslogic.{{ $businesslogicimagetag }}"
+        ports:
+        - containerPort: 5001
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/opt/app-root/build/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenariobusinesslogic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariobusinesslogic") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 5001
+    protocol: TCP
+    targetPort: 5001
+  selector:
+    {{- include "simphera.selectorLabels" (list . "scenariobusinesslogic") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenariodataaccess
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariodataaccess") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "scenariodataaccess") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "scenariodataaccess") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: scenariodataaccess-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "scenario-migration-{{ .Release.Revision }}"
+      containers:
+      - name: scenariodataaccess
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scenario/dataaccess:{{ $dataaccessimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:6001"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:6001"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 6001
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.scenario.dataaccess.{{ $dataaccessimagetag }}"
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenariodataaccess
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariodataaccess") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 6001
+    protocol: TCP
+    targetPort: 6001
+  selector:
+    {{- include "simphera.selectorLabels" (list . "scenariodataaccess") | nindent 4 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: scenario-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenario-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "scenario-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: scenario-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scenario/datamigrationjob:{{ $datamigrationimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "ScenarioDataMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Scenario.DataMigrationJob.{{ $datamigrationimagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenariorestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariorestapi") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "scenariorestapi") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "scenariorestapi") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: scenariorestapi
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scenario/api:{{ $restapiimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.restApiContainerResources" . | nindent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /health/readiness
+            port: 7001
+          initialDelaySeconds: 3
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /health/liveness
+            port: 7001
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 7001
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Scenario.RestApi.{{ $restapiimagetag }}"
+        - name: ROUTE_PREFIX_SCENARIOS
+          value: api/simphera/scenarios
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/ScenarioRestApi/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenariorestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariorestapi") | nindent 4 }}
+spec:
+  ports:
+  - name: scenariorestapi
+    port: 7001
+    protocol: TCP
+    targetPort: 7001
+  selector:
+    {{- include "simphera.selectorLabels" (list . "scenariorestapi") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scenariorestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariorestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/scenarios
+        pathType: Prefix
+        backend:
+          service:
+            name: scenariorestapi
+            port:
+              name: scenariorestapi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scenariorestswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scenariorestswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/scenarios/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: scenariorestapi
+            port:
+              name: scenariorestapi

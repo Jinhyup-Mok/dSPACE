@@ -1,0 +1,258 @@
+{{- $businesslogicimagetag := default .Values.global.simphera.image.tag .Values.permission.businesslogic.image.tag -}}
+{{- $restapiimagetag := default .Values.global.simphera.image.tag .Values.permission.restapi.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.permission.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: permissionbusinesslogicservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permissionbusinesslogicservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "permissionbusinesslogicservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "permissionbusinesslogicservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: permissionbusinesslogicservice-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "permission-migration-{{ .Release.Revision }}"
+      containers:
+      - name: permissionbusinesslogicservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/permission/businesslogic:{{ $businesslogicimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:5013"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:5013"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Permission.BusinessLogic.{{ $businesslogicimagetag }}"
+        - name: AUTHORIZATION
+          {{- if .Values.global.simphera.authorization.enabled }}
+          value: "true"
+          {{- else }}
+          value: "false"
+          {{- end }}
+        - name: SUPERUSER_ROLE
+          value: {{ .Values.global.simphera.authorization.superuserRole | quote }}
+        - name: PRINCIPAL_ID_CLAIM
+          value: {{ .Values.global.simphera.openIdProvider.principalIdClaim | quote }}
+        - name: GROUP_IDS_CLAIM
+          value: {{ .Values.global.simphera.openIdProvider.groupIdsClaim | quote }}
+        - name: PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: permissionprivatekey
+              key: permission-rsa-key
+        ports:
+        - containerPort: 5013
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: permissionbusinesslogicservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permissionbusinesslogicservice") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 5013
+    protocol: TCP
+    targetPort: 5013
+  selector:
+    {{- include "simphera.selectorLabels" (list . "permissionbusinesslogicservice") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: permissionapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permissionapi") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "permissionapi") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "permissionapi") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: permissionapi
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/permission/api:{{ $restapiimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.restApiContainerResources" . | nindent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /health/readiness
+            port: 5063
+          initialDelaySeconds: 3
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /health/liveness
+            port: 5063
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 5063
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Permission.RestApi.{{ $restapiimagetag }}"
+        - name: ROUTE_PREFIX
+          value: api/simphera/authorization
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: permissionapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permissionapi") | nindent 4 }}
+spec:
+  ports:
+  - name: permissionapi
+    port: 5063
+    protocol: TCP
+    targetPort: 5063
+  selector:
+    {{- include "simphera.selectorLabels" (list . "permissionapi") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: permissionapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permissionapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/authorization
+        pathType: Prefix
+        backend:
+          service:
+            name: permissionapi
+            port:
+              name: permissionapi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: permissionswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permissionswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/authorization/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: permissionapi
+            port:
+              name: permissionapi
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: permission-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "permission-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "permission-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: permission-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/permission/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "PermissionDataMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Permission.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+

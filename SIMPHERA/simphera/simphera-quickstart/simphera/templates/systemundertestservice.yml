@@ -1,0 +1,279 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.systemundertestservice.image.tag -}}
+{{- $appimagetag := default .Values.global.simphera.image.tag .Values.systemundertest.app.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.systemundertestservice.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: systemundertest-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertest-app") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "systemundertest-app") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "systemundertest-app") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.frontendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: systemundertest-app
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/systemundertest/frontend:{{ $appimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.frontendContainerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.frontendContainerResources" . | nindent 8 }}
+        ports:
+        - containerPort: 8080
+        {{- include "simphera.frontendContainerHealthChecks" . | nindent 8 }}
+        volumeMounts:
+        {{- include "simphera.nginx.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.nginx.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: systemundertest-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertest-app") | nindent 4 }}
+spec:
+  ports:
+  - name: sut-app
+    port: 3010
+    targetPort: 8080
+  selector:
+    {{- include "simphera.selectorLabels" (list . "systemundertest-app") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: systemundertest-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertest-app") | nindent 4 }}
+  annotations:
+    {{- include "simphera.frontendIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /remoteentry/systemundertest
+        pathType: Prefix
+        backend:
+          service:
+            name: systemundertest-app
+            port:
+              name: sut-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: systemundertestservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertestservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "systemundertestservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "systemundertestservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: systemundertestservice-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "systemundertest-migration-{{ .Release.Revision }}"
+      containers:
+      - name: systemundertestservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/systemundertest/businesslogic:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:10010"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:10010"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 4010
+        - containerPort: 10010
+        - containerPort: 6010
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        {{- include "simphera.customRootCertificates.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.SystemUnderTestService.{{ $imagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: systemundertestservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertestservice") | nindent 4 }}
+spec:
+  ports:
+  - name: gateway
+    port: 4010
+    protocol: TCP
+    targetPort: 4010
+  - name: grpc
+    port: 10010
+    protocol: TCP
+    targetPort: 10010
+  - name: rest
+    port: 6010
+    protocol: TCP
+    targetPort: 6010
+  selector:
+    {{- include "simphera.selectorLabels" (list . "systemundertestservice") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: systemundertest
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertest") | nindent 4 }}
+  annotations:
+    {{- include "simphera.apiGatewayIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /gateway/systemundertest
+        pathType: Prefix
+        backend:
+          service:
+            name: systemundertestservice
+            port:
+              name: gateway
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: systemundertest-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scbt-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "systemundertest-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: systemundertest-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/systemundertest/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "SystemUnderTestDataMigration.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.SystemUnderTest.DataAccess.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: systemundertestrestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertestrestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/suts
+        pathType: Prefix
+        backend:
+          service:
+            name: systemundertestservice
+            port:
+              name: rest
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: systemundertestrestswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "systemundertestrestswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/suts/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: systemundertestservice
+            port:
+              name: rest

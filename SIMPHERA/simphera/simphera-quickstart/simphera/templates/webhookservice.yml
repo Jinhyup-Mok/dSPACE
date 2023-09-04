@@ -1,0 +1,177 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.webhookservice.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.webhookservice.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhookservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "webhookservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "webhookservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "webhookservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: webhookservice-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "webhook-migration-{{ .Release.Revision }}"
+      containers:
+      - name: webhookservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/webhook/businesslogic:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:10018"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:10018"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 10018
+        - containerPort: 10017
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.WebhookService.{{ $imagetag }}"
+        - name: ROUTE_PREFIX
+          value: api/simphera/webhook
+         {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: webhook-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "webhook-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "webhook-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: webhook-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/webhook/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "WebhookDataMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Webhook.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhookservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "webhookservice") | nindent 4 }}
+spec:
+  ports:
+  - name: webhookrestapi
+    port: 10017
+    protocol: TCP
+    targetPort: 10017
+  - name: webhookservicegrpc
+    port: 10018
+    protocol: TCP
+    targetPort: 10018
+  selector:
+    {{- include "simphera.selectorLabels" (list . "webhookservice") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webhookrestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "webhookrestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/webhook
+        pathType: Prefix
+        backend:
+          service:
+            name: webhookservice
+            port:
+              name: webhookrestapi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webhookrestapiswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "webhookrestapiswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/webhook/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: webhookservice
+            port:
+              name: webhookrestapi
+

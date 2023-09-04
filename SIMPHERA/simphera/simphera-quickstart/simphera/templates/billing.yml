@@ -1,0 +1,180 @@
+{{- $billingserviceimagetag := default .Values.global.simphera.image.tag .Values.billing.businesslogic.billingservice.image.tag -}}
+{{- $codemetersyncimagetag := default .Values.global.simphera.image.tag .Values.billing.businesslogic.codemetersync.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.billing.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billingservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "billingservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "billingservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "billingservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: billingservice-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "billingservice-migration-{{ .Release.Revision }}"
+      containers:
+      - name: billingservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/billing/businesslogic/billingservice:{{ $billingserviceimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:5012"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:5012"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 5012
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Billing.BusinessLogic.BillingService.{{ $billingserviceimagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billingservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "billingservice") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 5012
+    protocol: TCP
+    targetPort: 5012
+  selector:
+    {{- include "simphera.selectorLabels" (list . "billingservice") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: codemetersync
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "codemetersync") | nindent 4 }}
+  annotations:
+    ignore-check.kube-linter.io/no-liveness-probe: "Codemetersync container currently doesn't support liveness probe."
+    ignore-check.kube-linter.io/no-readiness-probe: "Codemetersync doesn't need a readiness probe since it doesn't get called from outside."
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "codemetersync") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "codemetersync") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: codemetersync-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "billingservice-migration-{{ .Release.Revision }}"
+      containers:
+      - name: codemetersync
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/billing/businesslogic/codemetersync:{{ $codemetersyncimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        ports:
+        - containerPort: 6012
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.billing.businesslogic.codemetersync.{{ $codemetersyncimagetag }}"
+        - name: DS_CMU_SERVER
+          value: {{ .Values.global.simphera.codemeter.server | quote }}
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: billingservice-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "billingservice-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "billingservice-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: billingservice-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/billing/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "BillingDBMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Billing.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+

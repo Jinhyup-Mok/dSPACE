@@ -1,0 +1,4 @@
+apiVersion: v2
+description: dSPACE cloud solution for simulation and validation
+name: simphera-helm-templates
+version: 23.3-2023-05-26-1639-1

@@ -1,0 +1,29 @@
+# The are some requirements and limitations regarding the configuration of the storages in SIMPHERA.
+# The checks in this file validates the storage configuration.
+
+# The 'default' storage must exist and the type must be set to 'Minio'.
+{{- if not .Values.global.simphera.storages.default }}
+{{ fail "You must configure the storage 'default' under 'global.simphera.storages.default'. Please refer to the SIMPHERA Administration Manual for more details." }}
+{{- end }}
+
+{{- if or (not .Values.global.simphera.storages.default.type) (ne .Values.global.simphera.storages.default.type "Minio") }}
+{{ fail "You must use the storage type 'Minio' for the storage 'default' under 'global.simphera.storages.default.type'. Please refer to the SIMPHERA Administration Manual for more details." }}
+{{- end }}
+
+# The 'resultStorage' storage must exist and the type must be set to 'Minio'.
+{{- if not .Values.global.simphera.storages.resultStorage }}
+{{ fail "You must configure the storage 'resultStorage' under 'global.simphera.storages.resultStorage'. Please refer to the SIMPHERA Administration Manual for more details." }}
+{{- end }}
+
+{{- if or (not .Values.global.simphera.storages.resultStorage.type) (ne .Values.global.simphera.storages.resultStorage.type "Minio") }}
+{{ fail "You must use the storage type 'Minio' for the storage 'resultStorage' under 'global.simphera.storages.resultStorage.type'. Please refer to the SIMPHERA Administration Manual for more details." }}
+{{- end }}
+
+# The 'measurementStorage' storage must exist and the type must be set to 'PersistentVolume'.
+{{- if not .Values.global.simphera.storages.measurementStorage }}
+{{ fail "You must configure the storage 'measurementStorage' under 'global.simphera.storages.measurementStorage'. Please refer to the SIMPHERA Administration Manual for more details." }}
+{{- end }}
+
+{{- if or (not .Values.global.simphera.storages.measurementStorage.type) (ne .Values.global.simphera.storages.measurementStorage.type "PersistentVolume") }}
+{{ fail "You must use the storage type 'PersistentVolume' for the storage 'measurementStorage' under 'global.simphera.storages.measurementStorage.type'. Please refer to the SIMPHERA Administration Manual for more details." }}
+{{- end }}

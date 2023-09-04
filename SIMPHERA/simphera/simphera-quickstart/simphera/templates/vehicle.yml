@@ -1,0 +1,514 @@
+{{- $appimagetag := default .Values.global.simphera.image.tag .Values.vehicle.app.image.tag -}}
+{{- $gatewayimagetag := default .Values.global.simphera.image.tag .Values.vehicle.gateway.image.tag -}}
+{{- $businesslogicimagetag := default .Values.global.simphera.image.tag .Values.vehicle.businesslogic.image.tag -}}
+{{- $dataaccessimagetag := default .Values.global.simphera.image.tag .Values.vehicle.dataaccess.image.tag -}}
+{{- $datamigrationimagetag := default .Values.global.simphera.image.tag .Values.vehicle.datamigrationjob.image.tag -}}
+{{- $restapiimagetag := default .Values.global.simphera.image.tag .Values.vehicle.restapi.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vehicle-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehicle-app") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "vehicle-app") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "vehicle-app") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.frontendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: vehicle-app
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/vehicle/frontend:{{ $appimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.frontendContainerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.frontendContainerResources" . | nindent 8 }}
+        ports:
+        - containerPort: 8080
+        {{- include "simphera.frontendContainerHealthChecks" . | nindent 8 }}
+        volumeMounts:
+        {{- include "simphera.nginx.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.nginx.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vehicle-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehicle-app") | nindent 4 }}
+spec:
+  ports:
+  - name: vehicle-app
+    port: 3003
+    targetPort: 8080
+  selector:
+    {{- include "simphera.selectorLabels" (list . "vehicle-app") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vehicle-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehicle-app") | nindent 4 }}
+  annotations:
+    {{- include "simphera.frontendIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /remoteentry/vehicles
+        pathType: Prefix
+        backend:
+          service:
+            name: vehicle-app
+            port:
+              name: vehicle-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vehiclegateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclegateway") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "vehiclegateway") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "vehiclegateway") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: vehiclegateway
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/vehicle/apigateway:{{ $gatewayimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.nodeGatewayContainerResources" . | nindent 8 }}
+        livenessProbe:
+          httpGet:
+            path: /.well-known/apollo/server-health
+            port: 4003
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /.well-known/apollo/server-health
+            port: 4003
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        ports:
+        - containerPort: 4003
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.addStorageByName" (dict "context" .Values "storageName" .Values.vehicle.storageName ) | nindent 8 }}
+        {{- include "simphera.customRootCertificates.environmentVariables" . | nindent 8 }}
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/opt/app-root/build/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vehiclegateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclegateway") | nindent 4 }}
+spec:
+  ports:
+  - name: vehiclegateway
+    port: 4003
+    protocol: TCP
+    targetPort: 4003
+  selector:
+    {{- include "simphera.selectorLabels" (list . "vehiclegateway") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vehiclegateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclegateway") | nindent 4 }}
+  annotations:
+    {{- include "simphera.apiGatewayIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /gateway/vehicle
+        pathType: Prefix
+        backend:
+          service:
+            name: vehiclegateway
+            port:
+              name: vehiclegateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vehiclebusinesslogic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclebusinesslogic") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "vehiclebusinesslogic") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "vehiclebusinesslogic") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: vehiclebusinesslogic
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/vehicle/businesslogic:{{ $businesslogicimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.nodeBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:5003"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:5003"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.addStorageByName" (dict "context" .Values "storageName" .Values.vehicle.storageName ) | nindent 8 }}
+        {{- include "simphera.customRootCertificates.environmentVariables" . | nindent 8 }}
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        ports:
+        - containerPort: 5003
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/opt/app-root/build/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vehiclebusinesslogic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclebusinesslogic") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 5003
+    protocol: TCP
+    targetPort: 5003
+  selector:
+    {{- include "simphera.selectorLabels" (list . "vehiclebusinesslogic") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vehicledataaccess
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehicledataaccess") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "vehicledataaccess") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "vehicledataaccess") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: vehicledataaccess-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "vehicle-migration-{{ .Release.Revision }}"
+      containers:
+      - name: vehicledataaccess
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/vehicle/dataaccess:{{ $dataaccessimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:6003"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:6003"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 6003
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Vehicle.DataAccess.{{ $dataaccessimagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vehicledataaccess
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehicledataaccess") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 6003
+    protocol: TCP
+    targetPort: 6003
+  selector:
+    {{- include "simphera.selectorLabels" (list . "vehicledataaccess") | nindent 4 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: vehicle-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehicle-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "vehicle-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: vehicle-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/vehicle/datamigrationjob:{{ $datamigrationimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "VehicleDataMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Vehicle.DataMigrationJob.{{ $datamigrationimagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vehiclerestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclerestapi") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "vehiclerestapi") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "vehiclerestapi") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: vehiclerestapi
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/vehicle/api:{{ $restapiimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.restApiContainerResources" . | nindent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /health/readiness
+            port: 7003
+          initialDelaySeconds: 3
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /health/liveness
+            port: 7003
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 7003
+        - containerPort: 7004
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Vehicle.RestApi.{{ $restapiimagetag }}"
+        - name: ROUTE_PREFIX_VEHICLES
+          value: api/simphera/vehicles
+        - name: ROUTE_PREFIX_SENSORS
+          value: api/simphera/sensors
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/VehicleRestApi/servicesettings.json") | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/SensorRestApi/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vehiclerestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclerestapi") | nindent 4 }}
+spec:
+  ports:
+  - name: vehiclerestapi
+    port: 7003
+    protocol: TCP
+    targetPort: 7003
+  - name: sensorrestapi
+    port: 7004
+    protocol: TCP
+    targetPort: 7004
+  selector:
+    {{- include "simphera.selectorLabels" (list . "vehiclerestapi") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vehiclerestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclerestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/vehicles
+        pathType: Prefix
+        backend:
+          service:
+            name: vehiclerestapi
+            port:
+              name: vehiclerestapi
+      - path: /api/simphera/sensors
+        pathType: Prefix
+        backend:
+          service:
+            name: vehiclerestapi
+            port:
+              name: sensorrestapi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vehiclerestswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "vehiclerestswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/vehicles/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: vehiclerestapi
+            port:
+              name: vehiclerestapi
+      - path: /api/simphera/sensors/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: vehiclerestapi
+            port:
+              name: sensorrestapi

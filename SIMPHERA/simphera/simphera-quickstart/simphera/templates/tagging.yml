@@ -1,0 +1,187 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.tagging.businesslogic.image.tag -}}
+{{- $serviceimagetag := default .Values.global.simphera.image.tag .Values.tagging.gateway.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.tagging.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taggingbusinesslogicservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "taggingbusinesslogicservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "taggingbusinesslogicservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "taggingbusinesslogicservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: taggingbusinesslogicservice-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "tagging-migration-{{ .Release.Revision }}"
+      containers:
+      - name: taggingbusinesslogicservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/tagging/businesslogic:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:5011"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:5011"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.TaggingService.{{ $imagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        ports:
+        - containerPort: 5011
+        - containerPort: 6011
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taggingbusinesslogicservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "taggingbusinesslogicservice") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 5011
+    protocol: TCP
+    targetPort: 5011
+  selector:
+    {{- include "simphera.selectorLabels" (list . "taggingbusinesslogicservice") | nindent 4 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: tagging-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "tagging-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "tagging-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: tagging-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/tagging/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "TaggingDataMigration.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Tagging.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taggingrestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "taggingrestapi") | nindent 4 }}
+spec:
+  ports:
+  - name: taggingrestapi
+    port: 6011
+    protocol: TCP
+    targetPort: 6011
+  selector:
+    {{- include "simphera.selectorLabels" (list . "taggingbusinesslogicservice") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taggingrestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "taggingrestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/tag-management
+        pathType: Prefix
+        backend:
+          service:
+            name: taggingrestapi
+            port:
+              name: taggingrestapi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taggingrestswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "taggingrestswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/tag-management/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: taggingrestapi
+            port:
+              name: taggingrestapi

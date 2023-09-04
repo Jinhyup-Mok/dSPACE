@@ -1,0 +1,150 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.jobschedulerservice.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.jobschedulerservice.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobschedulerservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "jobschedulerservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "jobschedulerservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "20001"
+        prometheus.io/path: "/metrics"
+      labels:
+        {{- include "simphera.templateLabels" (list . "jobschedulerservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: "jobschedulerservice-init"
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "jobschedulerservice-migration-{{ .Release.Revision }}"
+      containers:
+      - name: jobschedulerservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/jobscheduler/businesslogic:{{ $imagetag }}"
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        resources:
+            requests:
+              memory: 200Mi
+              cpu: 100m
+            limits:
+              memory: 8Gi
+              cpu: 4
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:10009"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:10009"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 10009
+        - containerPort: 20001
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.JobScheduler.{{ $imagetag }}"
+        - name: METRIC_ENABLE
+          value: "true"
+        - name: METRIC_PORT
+          value: "20001"
+        - name: METRIC_ENDPOINT
+          value: "/metrics"
+        - name: METRIC_INTERVAL
+          value: "5"
+        - name: WTC_DEFAULT_AGENT_POOL
+          value: {{ .Values.jobschedulerservice.defaultAgentPool }}
+        - name: WTC_DEFAULT_ITC_AGENT_POOL
+          value: {{ .Values.jobschedulerservice.defaultItcAgentPool }}
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobschedulerservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "jobschedulerservice") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 10009
+    protocol: TCP
+    targetPort: 10009
+  - name: metrics
+    port: 20001
+    protocol: TCP
+    targetPort: 20001
+  selector:
+    {{- include "simphera.selectorLabels" (list . "jobschedulerservice") | nindent 4 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: jobschedulerservice-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "jobschedulerservice-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "jobschedulerservice-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: jobschedulerservice-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/jobscheduler/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "JobSchedulerDataMigrationJob.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.JobScheduler.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}

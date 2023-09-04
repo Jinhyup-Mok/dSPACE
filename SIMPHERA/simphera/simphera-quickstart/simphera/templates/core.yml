@@ -1,0 +1,123 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.coreservice.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coreservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "coreservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "coreservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "coreservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: coreservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/core/service:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:10019"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:10019"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 10019
+        - containerPort: 10020
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.dSPACE.Simphera.Server.Core.Service.{{ $imagetag }}"
+        - name: ROUTE_PREFIX
+          value: api/simphera
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coreservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "coreservice") | nindent 4 }}
+spec:
+  ports:
+  - name: corerestapi
+    port: 10020
+    protocol: TCP
+    targetPort: 10020
+  - name: coreservicegrpc
+    port: 10019
+    protocol: TCP
+    targetPort: 10019
+  selector:
+    {{- include "simphera.selectorLabels" (list . "coreservice") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: corerestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "corerestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/storages
+        pathType: Prefix
+        backend:
+          service:
+            name: coreservice
+            port:
+              name: corerestapi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: corerestapiswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "corerestapiswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/core/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: coreservice
+            port:
+              name: corerestapi
+

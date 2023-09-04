@@ -1,0 +1,517 @@
+# Default values for SIMPHERA.
+# This is a YAML-formatted file.
+
+## Global Docker image parameters
+## Please, note that this will override the image parameters, including dependencies, configured to use the global value
+global:
+  simphera:
+    image:
+      registry:
+
+      # the global default tag used for all docker images.
+      tag:
+
+      ## ref: https://kubernetes.io/docs/concepts/containers/images/#updating-images
+      # IfNotPresent, Always
+      pullPolicy: IfNotPresent
+
+      ## Optionally specify an array of imagePullSecrets.
+      ## Secrets must be manually created in the namespace.
+      ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+      pullSecrets: []
+      #  - myRegistryKeySecretName
+
+    ## Authentication (OIDC)
+    ## OIDC - OpenID Connect, an authentication layer on top of OAuth 2.0
+    openIdProvider:
+      ## The issuer URL of the OpenID Connect Provider. If a Keycloak server is used, it is usually in the form `https://host:port/auth/realms/simphera`
+      issuerUrl:
+
+      ## The client-id of the application. Each application has a client-id that is used to identify the application
+      clientId: simphera-client
+
+      ## The URL the client is redirected to after logout.
+      postLogoutRedirectUrl:
+
+      ## The OIDC scopes.
+      scope: openid profile
+
+      # The name of the claim in the access token containing the user ID.
+      principalIdClaim: sub
+
+      # The name of the claim in the access token containing the IDs of the groups to which the the user belongs.
+      groupIdsClaim: group_ids
+
+    authorization:
+      enabled: false
+      superuserRole: simphera_superuser
+
+    linuxNodes:
+      ## Node labels for linux pod assignment
+      ## https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
+      nodeSelector:
+        kubernetes.io/os: linux
+
+      ## Taints to be tolerated for Pod assignment.
+      ## Example:
+      ##   - key: "toleration"
+      ##     operator: "Equal"
+      ##     value: "value"
+      ##     effect: "NoSchedule"
+      ## https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      tolerations: []
+
+    hostnames:
+      simphera: null
+
+    tlsCertificates:
+      simphera: null
+
+    ingress:
+      # Additional annotations for all ingresses
+      additionalAnnotations: {}
+
+      # Redirect all requests from HTTP to HTTPS for all ingresses.
+      # NOTE: Only set this value to 'false' if other security features such as a central app gateway is configured.
+      sslRedirect: true
+
+    featureFlags:
+      ## Defines whether AURELION related features are visible
+      showAurelionFeatures: true
+      showAdvancedAurelionFeatures: false
+      showLogWidget: true
+      showKpis: false
+
+    # Global proxy configuration for remote connections.
+    # If deployment infrastructure requires proxies for
+    # internet access for storages. The usage of this proxy
+    # has to be configured per storage.
+    proxy:
+      hostname: null
+
+    ## storages that can be used in SIMPHERA. Storage name must be unique.
+    ##
+    ## Example
+    ##  Supported directly by SIMPHERA.
+    ## storages:
+    ##   default:
+    ##     type: Minio
+    ##     path: https://mysimphera-minio.dspace-dev.com/testdata
+    ##     secretName: minio-credentials
+    ##     accessKey: MyAccessKey
+    ##     secretKey: MySecretKey
+    ##     enabledIrsa: false
+    ##     enabledProxy: false
+    ##   resultStorage:
+    ##     type: Minio
+    ##     path: https://mysimphera-minio.dspace-dev.com/results
+    ##     enabledIrsa: false
+    ##     enabledProxy: false
+    ##     secretName: minio-credentials
+    ##     accessKey: # MyAccessKey
+    ##     secretKey: # MySecretKey
+    ##   mySimpheraHTTPBearerStorage:
+    ##     type: HTTPBearer
+    ##     path: https://gitlab.com/mySimpheraGitstorageg1/
+    ##     secretName: #mysecretname
+    ##     token: VhTWXEza3lqejJvdWRQUHZNNm9zRmdTdHJKUE9jNEtBIn0.eyJqd
+    ##   mySimpheralocalFilesystemStorage:
+    ##     type: File_System
+    ##     path: /tmp
+
+    ## Example
+    ##  Not directly supported by SIMPHERA. But can be supported by own implementation.
+    ## storages:
+    ##   mySimpheraMinioTokenStorage:
+    ##     type: MinioToken
+    ##     path: https://mysimphera-minio.dspace-dev.com/testdata
+    ##     enabledIrsa: false
+    ##     enabledProxy: false
+    ##     secretName: #mysecretname
+    ##     token: eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJKV1
+    ##   mySimpheraAzureStorage:
+    ##     type: Azure
+    ##     path: https://mySimpheraAzureStorage-minio.dspace-dev.com/results
+    ##     secretName: #mysecretname
+    ##     accessKey: MyAccessKey
+    ##     secretKey: MySecretKey
+    ##     storageAccountName: AzureStorageAccountName
+    ##     storageAccountKey: bGciOiewrewrew1NiIsInR5cC
+    ##     enabledIrsa: false
+    ##     enabledProxy: false
+    storages:
+      default:
+        type: Minio
+        path: null
+        secretName: null
+        accessKey: null
+        secretKey: null
+        enabledIrsa: null
+        enabledProxy: null
+      resultStorage:
+        type: Minio
+        path: null
+        secretName: null
+        accessKey: null
+        secretKey: null
+        enabledIrsa: null
+        enabledProxy: null
+      measurementStorage:
+        type: PersistentVolume
+        existingClaim: null
+        storageClass: null
+        storageSize: null
+    mqtt:
+      host: null
+      topicPrefix: dspace/simphera/
+
+    codemeter:
+      server: null
+
+    rdm:
+      enabled: false
+      type: null
+      url: null
+      apiUrl: null
+      username: null
+      password: null
+      secretName: null
+      storageIds: ""
+      enabledProxy: false
+
+    additionalLinks: []
+    ## Configuration of additional links for each SIMPHERA view.
+    ## In order to add one or more additional link to a SIMPHERA view the according identifier
+    ## needs defined entries with information about the label and the linked URL.
+    ## Within these URLs defined placeholder (e.g. projectId) can be used. These placeholders
+    ## will be replaced by the actual values when the additional links are used in SIMPHERA.
+
+    ## Default value for kubernetes cluster DNS domain
+    clusterDomain: cluster.local
+
+    customRootCertificates:
+      existingSecret: null
+      key: null
+
+    enableCORS: false
+
+    ## Logging settings
+    ## Set logging verbosity, valid log levels are:
+    ## TRACE, DEBUG, INFO, ERROR
+    log:
+      level: INFO
+      format: CONSOLE_JSON
+
+    dspaceEulaAccepted: false
+    microsoftDotnetLibraryLicenseAccepted: false
+
+# If forcePodRecreation is set to true all pods will be recreated in case of a 'helm upgrade' command.
+forcePodRecreation: false
+
+# In order to debug .NET executables in a container the Linux capability SYS_PTRACE must be allowed.
+# This capability can be enabled using the following flag (do not use in production):
+enableSysPtrace: false
+
+env:
+  ## Extra env vars to be added to all pods
+  extraEnvVars: {}
+  #  key1: value1
+
+authmanager:
+  image:
+    tag:
+  datamigrationjob:
+    image:
+      tag:
+
+adminservice:
+  ingress:
+    enabled: false
+
+  image:
+    tag:
+
+jobschedulerservice:
+  ## The name of the default agent pool to use for execution if no demand 'WTC_AGENT_POOL' has been configured for job.
+  defaultAgentPool: executoragentlinux
+
+  ## The name of the default agent pool to use for itc execution if no demand `WTC_ITC_AGENT_POOL` has been configured for itc job.
+  defaultItcAgentPool: itcagentlinux
+
+  image:
+    tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+restapiservice:
+  image:
+    tag:
+
+resultservice:
+  datamigrationjob:
+    image:
+      tag:
+  resultStorageName:
+
+scbtservice:
+  image:
+    tag:
+
+  jobDefaultExecutionTimeout: 300
+
+  hooks:
+    evaluate:
+      result:
+      testcaseresult:
+      run:
+
+  datamigrationjob:
+    image:
+      tag:
+
+systemundertestservice:
+  image:
+    tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+testenvironmentservice:
+  image:
+    tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+remotedesktop:
+  ## If false, remotedesktop will not be installed
+  enabled: false
+  apiurl:
+
+project:
+  businesslogic:
+    image:
+      tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+permission:
+  businesslogic:
+    image:
+      tag:
+  restapi:
+    image:
+      tag:
+  datamigrationjob:
+    image:
+      tag:
+
+tagging:
+  businesslogic:
+    image:
+      tag:
+  gateway:
+    image:
+      tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+help:
+  image:
+    tag:
+
+appshell:
+  image:
+    tag:
+
+  hooks:
+    scenario:
+      url:
+    scbt:
+      run:
+        url:
+
+scenario:
+  storageName:
+
+  app:
+    enabled: true
+    image:
+      tag:
+
+  gateway:
+    image:
+      tag:
+
+  businesslogic:
+    image:
+      tag:
+  dataaccess:
+    image:
+      tag:
+
+  restapi:
+    image:
+      tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+scbt:
+  app:
+    enabled: true
+    image:
+      tag:
+
+  service:
+    image:
+      tag:
+
+vehicle:
+  storageName:
+
+  app:
+    enabled: true
+    image:
+      tag:
+
+  gateway:
+    image:
+      tag:
+
+  businesslogic:
+    image:
+      tag:
+  dataaccess:
+    image:
+      tag:
+
+  restapi:
+    image:
+      tag:
+  datamigrationjob:
+    image:
+      tag:
+
+experiment:
+  storageName:
+
+  measurementStorageName:
+
+  app:
+    enabled: true
+    image:
+      tag:
+
+  service:
+    image:
+      tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+  measurementservice:
+    image:
+      tag:
+
+systemundertest:
+  app:
+    enabled: true
+    image:
+      tag:
+
+testenvironment:
+  app:
+    enabled: true
+    image:
+      tag:
+
+stepbt:
+  storageName:
+
+  resultStorageName:
+
+  app:
+    enabled: false
+    image:
+      tag:
+
+  restapi:
+    enabled: false
+
+  gateway:
+    image:
+      tag:
+
+  businesslogic:
+    image:
+      tag:
+  datamigrationjob:
+    image:
+      tag:
+
+datareplay:
+  resultStorageName:
+
+  cacheStorageName:
+
+  ivsStorageName:
+
+  app:
+    enabled: true
+    image:
+      tag:
+
+  service:
+    image:
+      tag:
+
+  businesslogicservice:
+    image:
+      tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+  restapi:
+    image:
+      tag:
+
+billing:
+  businesslogic:
+    billingservice:
+      image:
+        tag:
+    codemetersync:
+      image:
+        tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+webhookservice:
+  image:
+    repository:
+    tag:
+
+  datamigrationjob:
+    image:
+      tag:
+
+  restapi:
+
+coreservice:
+  image:
+    tag:

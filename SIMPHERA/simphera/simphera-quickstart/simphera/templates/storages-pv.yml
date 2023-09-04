@@ -1,0 +1,25 @@
+{{- if .Values.global.simphera.storages }}
+{{- range $name, $value := $.Values.global.simphera.storages }}
+{{- $type := $value.type | required (printf "Required value not set: global.simphera.storages.%s.type" $name) }}
+{{- if eq $type "PersistentVolume" }}
+{{- if not $value.existingClaim }}
+{{- $storageSize := $value.storageSize | required (printf "Required value not set: global.simphera.storages.%s.storageSize" $name) }}
+{{- $storageClass := $value.storageClass | required (printf "Required value not set: global.simphera.storages.%s.storageClass" $name) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "storage-%s-pvc" ($name | lower) | quote }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  accessModes:
+  - ReadWriteMany
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: {{ $storageSize }}
+  storageClassName: {{ $storageClass }}
+---
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,279 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.testenvironmentservice.image.tag -}}
+{{- $appimagetag := default .Values.global.simphera.image.tag .Values.testenvironment.app.image.tag -}}
+{{- $imagetagdatamigration := default .Values.global.simphera.image.tag .Values.testenvironmentservice.datamigrationjob.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testenvironment-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironment-app") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "testenvironment-app") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "testenvironment-app") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.frontendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: testenvironment-app
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/testenvironment/frontend:{{ $appimagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.frontendContainerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.frontendContainerResources" . | nindent 8 }}
+        ports:
+        - containerPort: 8080
+        {{- include "simphera.frontendContainerHealthChecks" . | nindent 8 }}
+        volumeMounts:
+        {{- include "simphera.nginx.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.nginx.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testenvironment-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironment-app") | nindent 4 }}
+spec:
+  ports:
+  - name: te-app
+    port: 3011
+    targetPort: 8080
+  selector:
+    {{- include "simphera.selectorLabels" (list . "testenvironment-app") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: testenvironment-app
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironment-app") | nindent 4 }}
+  annotations:
+    {{- include "simphera.frontendIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /remoteentry/testenvironment
+        pathType: Prefix
+        backend:
+          service:
+            name: testenvironment-app
+            port:
+              name: te-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testenvironmentservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironmentservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "testenvironmentservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "testenvironmentservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      initContainers:
+      - name: testenvironmentservice-init
+        image: {{ .Values.global.simphera.image.registry }}/dspace/simphera/k8s-wait-for:{{ .Values.global.simphera.image.tag }}
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.initContainerResources" . | nindent 8 }}
+        args:
+        - "job"
+        - "testenvironment-migration-{{ .Release.Revision }}"
+      containers:
+      - name: testenvironmentservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/testenvironment/businesslogic:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Readiness", "-addr=0.0.0.0:10011"]
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-service=Liveness", "-addr=0.0.0.0:10011"]
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 10011
+        - containerPort: 6013
+        - containerPort: 4012
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        {{- include "simphera.customRootCertificates.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.TestEnvironmentService.{{ $imagetag }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testenvironmentservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironmentservice") | nindent 4 }}
+spec:
+  ports:
+  - name: grpc
+    port: 10011
+    protocol: TCP
+    targetPort: 10011
+  - name: rest
+    port: 6013
+    protocol: TCP
+    targetPort: 6013
+  - name: gateway
+    port: 4012
+    protocol: TCP
+    targetPort: 4012
+  selector:
+    {{- include "simphera.selectorLabels" (list . "testenvironmentservice") | nindent 4 }}
+---
+apiVersion: batch/v1 # Migration Job
+kind: Job
+metadata:
+  name: testenvironment-migration-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "scbt-migration") | nindent 4 }}
+  annotations:
+    {{- include "simphera.migrationAnnotations" $ | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.jobTemplateLabels" (list . "testenvironment-migration") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: testenvironment-migration
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/testenvironment/datamigrationjob:{{ $imagetagdatamigration }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.migrationContainerResources" . | nindent 8 }}
+        {{- include "simphera.job.command" (list . "dotnet" "TestEnvironmentDataMigration.dll") | nindent 8 }}
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        {{- include "simphera.storages" . | indent 8 }}
+        {{- include "simphera.databases.simphera.environmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.Server.Validation.TestEnvironment.DataMigrationJob.{{ $imagetagdatamigration }}"
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: testenvironment
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironment") | nindent 4 }}
+  annotations:
+    {{- include "simphera.apiGatewayIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /gateway/testenvironment
+        pathType: Prefix
+        backend:
+          service:
+            name: testenvironmentservice
+            port:
+              name: gateway
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: testenvironmentrestapi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironmentrestapi") | nindent 4 }}
+  annotations:
+    {{- include "simphera.restApiIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/test-environments
+        pathType: Prefix
+        backend:
+          service:
+            name: testenvironmentservice
+            port:
+              name: rest
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: testenvironmentrestswagger
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "testenvironmentrestswagger") | nindent 4 }}
+  annotations:
+    {{- include "simphera.swaggerIngressAnnotations" $ | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /api/simphera/test-environments/swagger
+        pathType: Prefix
+        backend:
+          service:
+            name: testenvironmentservice
+            port:
+              name: rest

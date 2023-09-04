@@ -1,0 +1,236 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.appshell.image.tag -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: appshell-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+data:
+  app-config.js: |-
+    window.__APP_CONFIG__ =
+    {
+      API_URL: '/gateway/project',
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      APP_URL: '{{ .Values.global.simphera.baseUrls.simphera }}/',
+{{- else }}
+      APP_URL: 'https://{{ .Values.global.simphera.hostnames.simphera }}/',
+{{- end }}
+      OIDC_CLIENT_ID: {{ .Values.global.simphera.openIdProvider.clientId | quote }},
+      OIDC_POST_LOGOUT_REDIRECT_URI: {{ .Values.global.simphera.openIdProvider.postLogoutRedirectUrl | default (print "https://" .Values.global.simphera.hostnames.simphera "/") | quote }},
+      OIDC_ISSUER_URL: {{ .Values.global.simphera.openIdProvider.issuerUrl | quote }},
+      OIDC_SCOPE:  {{ .Values.global.simphera.openIdProvider.scope | quote }},
+      SCENARIOS_APP_ENABLED: {{ .Values.scenario.app.enabled }},
+      VEHICLES_APP_ENABLED: {{ .Values.vehicle.app.enabled }},
+      SCBT_APP_ENABLED: {{ .Values.scbt.app.enabled }},
+      STEPBT_APP_ENABLED: {{ .Values.stepbt.app.enabled }},
+      DATAREPLAY_APP_ENABLED: {{ .Values.datareplay.app.enabled }},
+      EXPERIMENT_APP_ENABLED: {{ .Values.experiment.app.enabled }},
+      SYSTEMUNDERTEST_APP_ENABLED: {{ .Values.systemundertest.app.enabled }},
+      TESTENVIRONMENT_APP_ENABLED: {{ .Values.testenvironment.app.enabled }},
+      PRODUCT_VERSION: '{{ .Chart.Version | replace "+" "_" }}',
+    }
+    window.__FEATURE_FLAGS__ =
+    {
+      {{- range $key, $value := .Values.global.simphera.featureFlags }}
+      {{ $key }}: {{ $value }},
+      {{- end }}
+    }
+    window.__SCBT_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/scbt',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/scbt',
+{{- end }}
+      RUN_HOOK_URL: '{{.Values.appshell.hooks.scbt.run.url }}',
+    }
+    window.__SCENARIO_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/scenario',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/scenario',
+{{- end }}
+    }
+    window.__VEHICLE_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/vehicle',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/vehicle',
+{{- end }}
+    }
+    window.__DATAREPLAY_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/datareplay',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/datareplay',
+{{- end }}
+    }
+    window.__STEPBT_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/stepbt',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/stepbt',
+{{- end }}
+    }
+    window.__EXPERIMENT_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/experiment',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/experiment',
+{{- end }}
+    }
+    window.__SYSTEMUNDERTEST_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/systemundertest',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/systemundertest',
+{{- end }}
+    }
+    window.__TESTENVIRONMENT_APP_CONFIG__ = {
+{{- if .Values.global.simphera.baseUrls.simphera }}
+      API_GATEWAY_HOST: '{{ .Values.global.simphera.baseUrls.simphera }}/gateway/testenvironment',
+{{- else }}
+      API_GATEWAY_HOST: 'https://{{ .Values.global.simphera.hostnames.simphera }}/gateway/testenvironment',
+{{- end }}
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: additional-links-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+data:
+  additional-links.js: |-
+    window.__ADDITIONAL_LINKS__ =
+      {{- .Values.global.simphera.additionalLinks | toPrettyJson | nindent 8 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: appshell-remote-entries-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+data:
+  remoteEntryHosts.js: |-
+    window.__webpack_federation_remotes__ = {
+      appshell: '.',
+      scenarios: '/remoteentry/scenarios',
+      vehicles: '/remoteentry/vehicles',
+      scbt: '/remoteentry/scbt',
+      stepbt: '/remoteentry/stepbt',
+      datareplay: '/remoteentry/datareplay',
+      experiment: '/remoteentry/experiment',
+      systemundertest: '/remoteentry/systemundertest',
+      testenvironment: '/remoteentry/testenvironment',
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maintenance-infos
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+data:
+  maintenance-infos.json: |-
+    []
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appshell
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "appshell") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "appshell") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.frontendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: appshell
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/core/appshell:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.frontendContainerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.frontendContainerResources" . | nindent 8 }}
+        ports:
+        - containerPort: 8080
+        {{- include "simphera.frontendContainerHealthChecks" . | nindent 8 }}
+        volumeMounts:
+        {{- include "simphera.nginx.volumeMounts" . | nindent 8 }}
+        - name: app-config
+          mountPath: /var/www/html/app-config.js
+          subPath: app-config.js
+        - name: app-additional-links-config
+          mountPath: /var/www/html/additional-links.js
+          subPath: additional-links.js
+        - name: app-remote-entries-config
+          mountPath: /var/www/html/remoteEntryHosts.js
+          subPath: remoteEntryHosts.js
+        - name: app-maintenance-infos
+          mountPath: /var/www/html/maintenance-infos.json
+          subPath: maintenance-infos.json
+      volumes:
+      {{- include "simphera.nginx.volumes" . | nindent 6 }}
+      - name: app-config
+        configMap:
+          name: appshell-config
+      - name: app-additional-links-config
+        configMap:
+          name: additional-links-config
+      - name: app-remote-entries-config
+        configMap:
+          name: appshell-remote-entries-config
+      - name: app-maintenance-infos
+        configMap:
+          name: maintenance-infos
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: appshell
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+spec:
+  ports:
+  - name: appshell
+    port: 3000
+    targetPort: 8080
+  selector:
+    {{- include "simphera.selectorLabels" (list . "appshell") | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: appshell
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "appshell") | nindent 4 }}
+  annotations:
+    {{- include "simphera.frontendIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: appshell
+            port:
+              name: appshell

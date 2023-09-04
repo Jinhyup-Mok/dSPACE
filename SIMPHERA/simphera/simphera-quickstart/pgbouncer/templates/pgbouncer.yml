@@ -1,0 +1,176 @@
+{{- /* PgBouncer always needs the fully qualified name to connect to the postgresql database. In case the FQN is set, it is used, otherwise append namspace.svc.cluster.local */ -}}
+{{- $pgSimpheraFqdn := contains "." .Values.global.simphera.databases.simphera.pgHost | ternary .Values.global.simphera.databases.simphera.pgHost ( printf "%s.%s.svc.%s" .Values.global.simphera.databases.simphera.pgHost .Release.Namespace .Values.global.simphera.clusterDomain ) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-configmap
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "pgbouncer") | nindent 4 }}
+data:
+  pgbouncer.ini: |-
+    [databases]
+    simphera = host={{ $pgSimpheraFqdn }} port={{ .Values.global.simphera.databases.simphera.pgPort }} dbname={{ .Values.global.simphera.databases.simphera.pgDatabase }} pool_size={{ .Values.global.simphera.databases.simphera.maxServerConnections }}
+
+    [pgbouncer]
+    listen_port=6432
+    listen_addr=0.0.0.0
+    auth_file=/opt/pgbouncer/conf/user/userlist.txt
+    auth_type=md5
+    pidfile=/opt/pgbouncer/tmp/pgbouncer.pid
+    logfile=/opt/pgbouncer/logs/pgbouncer.log
+    log_connections=0
+    log_stats=0
+    log_disconnections=0
+    admin_users=postgres
+    client_tls_sslmode=disable
+    server_tls_sslmode={{ .Values.global.simphera.pgbouncer.serverTlsMode }}
+{{- if .Values.global.simphera.customRootCertificates.existingSecret }}
+    server_tls_ca_file=/etc/ssl/certs/customRootCertificates.pem
+{{- end }}
+    max_client_conn={{ .Values.global.simphera.pgbouncer.maxClientConnections }}
+    pool_mode=transaction
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "pgbouncer") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "pgbouncer") | nindent 6 }}
+  replicas: {{ .Values.replicas }}
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "pgbouncer") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsUser: 1000
+      {{- if .Values.global.simphera.serviceAccounts.simphera }}
+      serviceAccountName: {{ .Values.global.simphera.serviceAccounts.simphera | quote }}
+      {{- else }}
+      serviceAccountName: simphera
+      {{- end }}
+      initContainers:
+      - name: userlist-txt-provider
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/pgbouncer:{{ .Values.global.simphera.image.tag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        command:
+          - sh
+        args:
+          - '-c'
+          - |
+            echo \"$POSTGRESQL_USERNAME\" \"$POSTGRESQL_PASSWORD\" > /userlist-txt/userlist.txt
+        env:
+{{- if .Values.global.simphera.databases.simphera.secret }}
+        - name: POSTGRESQL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.global.simphera.databases.simphera.secret }}
+              key: username
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.global.simphera.databases.simphera.secret }}
+              key: password
+{{- else }}
+        - name: POSTGRESQL_USERNAME
+          value: {{ .Values.global.simphera.databases.simphera.pgUsername | quote }}
+        - name: POSTGRESQL_PASSWORD
+          value: {{ .Values.global.simphera.databases.simphera.pgPassword | quote }}
+{{- end }}
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 4
+            memory: 1Gi
+        volumeMounts:
+          - name: userlist-txt
+            mountPath: /userlist-txt
+      containers:
+      - name: pgbouncer
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/pgbouncer:{{ .Values.global.simphera.image.tag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        readinessProbe:
+          tcpSocket:
+            port: 6432
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        livenessProbe:
+          tcpSocket:
+            port: 6432
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        ports:
+        - containerPort: 6432
+        env:
+        - name: POSTGRESQL_USERNAME
+          value: not_used
+        - name: POSTGRESQL_PASSWORD
+          value: not_used
+        - name: POSTGRESQL_HOST
+          value: {{ .Values.global.simphera.databases.simphera.pgHost }}
+        - name: PGBOUNCER_PORT
+          value: "0"
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        - name: pgbouncer-configmap
+          mountPath: /opt/pgbouncer/conf
+        - name: userlist-txt
+          mountPath: /opt/pgbouncer/conf/user
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      - name: pgbouncer-configmap
+        configMap:
+          name: pgbouncer-configmap
+      - name: userlist-txt
+        emptyDir: {}
+      {{- with .Values.global.simphera.linuxNodes.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.simphera.linuxNodes.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      imagePullSecrets:
+      {{- range .Values.global.simphera.image.pullSecrets }}
+        - name: {{ . }}
+      {{- end}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "pgbouncer") | nindent 4 }}
+spec:
+  selector:
+    {{- include "simphera.selectorLabels" (list . "pgbouncer") | nindent 4 }}
+  type: ClusterIP
+  ports:
+  - name: pgbouncer
+    port: 6432
+    protocol: TCP
+    targetPort: 6432

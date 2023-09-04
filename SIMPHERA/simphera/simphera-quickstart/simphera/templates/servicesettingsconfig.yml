@@ -1,0 +1,161 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: servicesettings
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "service-settings-configmap") | nindent 4 }}
+data:
+  servicesettings.json: |-
+    {
+      "ProjectBusinessLogicService": {
+        "Host": "projectbusinesslogicservice",
+        "Port": 10007,
+        "ClientType": "dSPACE.Simphera.Protobuf.Projects.ProjectBusinessLogicService.ProjectBusinessLogicService+ProjectBusinessLogicServiceClient"
+      },
+      "ProjectRestApi": {
+          "Host": "projectrestapi",
+          "Port": 5067,
+          "ClientType": ""
+      },
+      "TaggingRestApi": {
+          "Host": "taggingrestapi",
+          "Port": 6011,
+          "ClientType": ""
+      },
+     "SystemUnderTestRestApi": {
+          "Host": "systemundertestrestapi",
+          "Port": 6010,
+          "ClientType": ""
+      },
+       "TestEnvironmentRestApi": {
+          "Host": "testenvironmentrestapi",
+          "Port": 6013,
+          "ClientType": ""
+      },
+      "ScenarioBusinessLogicService": {
+        "Host": "scenariobusinesslogic",
+        "Port": 5001,
+        "ClientType": "dSPACE.Simphera.Protobuf.Scenarios.BusinessLogic.ScenarioBusinesslogic+ScenarioBusinesslogicClient"
+      },
+      "ScenarioDataAccessService": {
+        "Host": "scenariodataaccess",
+        "Port": 6001,
+        "ClientType": "dSPACE.Simphera.Protobuf.Scenarios.DataAccess.ScenarioApi+ScenarioApiClient"
+      },
+      "VehicleBusinessLogicService": {
+        "Host": "vehiclebusinesslogic",
+        "Port": 5003,
+        "ClientType": "dSPACE.Simphera.Protobuf.Vehicles.BusinessLogic.VehicleBusinesslogic+VehicleBusinesslogicClient"
+      },
+      "VehicleDataAccessService": {
+        "Host": "vehicledataaccess",
+        "Port": 6003,
+        "ClientType": "dSPACE.Simphera.Protobuf.Vehicles.DataAccess.VehicleAdapter+VehicleAdapterClient"
+      },
+      "VehicleRestApi": {
+        "Host": "vehiclerestapi",
+        "Port": 7003,
+        "ClientType": ""
+      },
+      "SensorRestApi": {
+        "Host": "vehiclerestapi",
+        "Port": 7004,
+        "ClientType": ""
+      },
+      "ScenarioRestApi": {
+        "Host": "scenariorestapi",
+        "Port": 7001,
+        "ClientType": ""
+      },
+      "ScbtService": {
+        "Host": "scbtservice",
+        "Port": 10000,
+        "ClientType": "dSPACE.Simphera.Protobuf.Validation.Services.ScbtService.ScbtApi+ScbtApiClient"
+      },
+      "ScbTBusinessLogicService": {
+        "Host": "scbtservice",
+        "Port": 10000,
+        "ClientType": "dSPACE.Simphera.Protobuf.Validation.BusinessLogic.ScbtApi+ScbtApiClient"
+      },
+      "SystemUnderTestService": {
+        "Host": "systemundertestservice",
+        "Port": 10010,
+        "ClientType": "dSPACE.Simphera.Protobuf.SystemUnderTest.SystemUnderTestApi+SystemUnderTestApiClient"
+      },
+      "TaggingBusinessLogicService": {
+        "Host": "taggingbusinesslogicservice",
+        "Port": 5011,
+        "ClientType": "dSPACE.Simphera.Protobuf.Tagging.BusinessLogicService.TaggingBusinessLogicService+TaggingBusinessLogicServiceClient"
+      },
+      "TestEnvironmentService": {
+        "Host": "testenvironmentservice",
+        "Port": 10011,
+        "ClientType": "dSPACE.Simphera.Protobuf.TestEnvironment.TestEnvironmentApi+TestEnvironmentApiClient"
+      },
+      "JobSchedulerService": {
+        "Host": "jobschedulerservice",
+        "Port": 10009,
+        "ClientType": "dSPACE.Simphera.Protobuf.Validation.JobScheduler.JobSchedulerApi+JobSchedulerApiClient"
+      },
+      "DataReplayBusinessLogicService": {
+        "Host": "datareplaybusinesslogicservice",
+        "Port": 5008,
+        "ClientType": "dSPACE.Simphera.Protobuf.DataReplay.DataReplayBusinessLogic.DataReplayBusinessLogicService+DataReplayBusinessLogicServiceClient"
+      },
+      "DataReplayRestApi": {
+        "Host": "datareplayrestapi",
+        "Port": 6008,
+        "ClientType": ""
+      },
+      "StepbtService": {
+        "Host": "stepbtbusinesslogic",
+        "Port": 5005,
+        "ClientType": "dSPACE.Simphera.Protobuf.Stepbt.BusinessLogic.StepbtBusinessLogicService+StepbtBusinessLogicServiceClient"
+      },
+      "StepbtRestApi": {
+        "Host": "stepbtbusinesslogic",
+        "Port": 6005,
+        "ClientType": ""
+      },
+      "ExperimentService": {
+        "Host": "experimentservice",
+        "Port": 5009,
+        "ClientType": "dSPACE.Simphera.Protobuf.Experiment.Services.ExperimentApi+ExperimentApiClient"
+      },
+      "ExperimentRestApi": {
+        "Host": "experimentservice",
+        "Port": 6009,
+        "ClientType": ""
+      },
+      "PermissionBusinessLogicService": {
+        "Host": "permissionbusinesslogicservice",
+        "Port": 5013,
+        "ClientType": "dSPACE.Simphera.Protobuf.Permissions.PermissionBusinessLogicService.PermissionBusinessLogicService+PermissionBusinessLogicServiceClient"
+      },
+      "BillingBusinessLogicService": {
+        "Host": "billingservice",
+        "Port": 5012,
+        "ClientType": "dSPACE.Simphera.Protobuf.Billing.BillingBusinessLogic+BillingBusinessLogicClient"
+      },
+      "PermissionRestApi": {
+        "Host": "permissionapi",
+        "Port": 5063,
+        "ClientType": ""
+      },
+      "Webhook": {
+        "Host": "webhookservice",
+        "Port": 10017,
+        "ClientType": ""
+      },
+      "WebhookService": {
+        "Host": "webhookservice",
+        "Port": 10018,
+        "ClientType": "dSPACE.Simphera.Protobuf.Server.WebhookService.WebhookApi+WebhookApiClient"
+      },
+      "CoreRestApi": {
+        "Host": "coreservice",
+        "Port": 10020,
+        "ClientType": ""
+      }
+    }

@@ -1,0 +1,127 @@
+{{- $imagetag := default .Values.global.simphera.image.tag .Values.adminservice.image.tag -}}
+{{- $pgSecret := default "database-simphera-secret" .Values.global.simphera.databases.simphera.secret -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "adminservice") | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "simphera.selectorLabels" (list . "adminservice") | nindent 6 }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        {{- include "simphera.templateLabels" (list . "adminservice") | nindent 8 }}
+    spec:
+      {{- include "simphera.generalPodProperties" . | nindent 6 }}
+      {{- include "simphera.backendPodSecurityContextAndServiceAccount" . | nindent 6 }}
+      containers:
+      - name: adminservice
+        image: "{{ .Values.global.simphera.image.registry }}/dspace/simphera/scbt/admin:{{ $imagetag }}"
+        imagePullPolicy: {{ .Values.global.simphera.image.pullPolicy }}
+        {{- include "simphera.containerSecurityContext" . | nindent 8 }}
+        {{- include "simphera.dotnetBusinesslogicContainerResources" . | nindent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /health/readiness
+            port: 5050
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /health/liveness
+            port: 5050
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 5
+        ports:
+        - containerPort: 5050
+        env:
+        {{- include "simphera.generalEnvironmentVariables" . | nindent 8 }}
+        - name: SCBT_SERVICE_ID
+          value: "dSPACE.Simphera.AdminService.{{ $imagetag }}"
+        - name: DB_HOST_SQL
+          value: {{ .Values.global.simphera.databases.simphera.pgHost | quote }}
+        - name: DB_PORT_SQL
+          value: {{ .Values.global.simphera.databases.simphera.pgPort | quote }}
+        - name: DB_USER_SQL
+          valueFrom:
+            secretKeyRef:
+              name: {{ $pgSecret }}
+              key: username
+        - name: DB_PASSWORD_SQL
+          valueFrom:
+            secretKeyRef:
+              name: {{ $pgSecret }}
+              key: password
+        {{- range $key, $val := .Values.env.extraEnvVars }}
+        - name: {{ $key }}
+          value: "{{ $val }}"
+        {{- end }}
+        volumeMounts:
+        {{- include "simphera.customRootCertificates.volumeMounts" . | nindent 8 }}
+        {{- include "simphera.serviceSettings.volumeMounts" (list . "/usr/app/servicesettings.json") | nindent 8 }}
+      volumes:
+      {{- include "simphera.customRootCertificates.volumes" . | nindent 6 }}
+      {{- include "simphera.serviceSettings.volumes" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "adminservice") | nindent 4 }}
+spec:
+  ports:
+  - name: adminport
+    port: 5050
+    protocol: TCP
+    targetPort: 5050
+  selector:
+    {{- include "simphera.selectorLabels" (list . "adminservice") | nindent 4 }}
+---
+{{- if .Values.adminservice.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: adminservice
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    ingress.kubernetes.io/ssl-redirect: "true"
+    ingress.kubernetes.io/auth-remove-header: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/auth-secret: admin-credentials
+    nginx.ingress.kubernetes.io/auth-type: basic
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /scbtadmin/(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: adminservice
+            port:
+              name: adminport
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-credentials
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+data:
+  auth: {{ htpasswd .Values.adminservice.credentials.username .Values.adminservice.credentials.password | b64enc }}
+{{- end }}

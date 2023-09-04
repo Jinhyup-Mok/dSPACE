@@ -1,0 +1,44 @@
+# https://www.magalix.com/blog/kubernetes-patterns-the-service-discovery-pattern
+# https://itnext.io/how-to-access-kubernetes-applications-using-services-c437a4c940ad
+# https://dev.to/kaoskater08/building-a-headless-service-in-kubernetes-3bk8
+
+{{- if .Values.remotedesktop.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: remotedesktop
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "remotedesktop") | nindent 4 }}
+spec:
+  type: ExternalName
+  externalName: {{ .Values.remotedesktop.apiurl }}
+  ports:
+    - name: remotedesktop
+      port: 80
+      protocol: TCP
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: remotedesktop
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simphera.resourceLabels" (list . "remotedesktop") | nindent 4 }}
+  annotations:
+    {{- include "simphera.frontendIngressAnnotations" . | nindent 4 }}
+spec:
+  {{- include "simphera.ingressTls" . | nindent 2 }}
+  rules:
+  - host: {{ .Values.global.simphera.hostnames.simphera }}
+    http:
+      paths:
+      - path: /remotedesktop
+        pathType: Prefix
+        backend:
+          service:
+            name: remotedesktop
+            port:
+              name: remotedesktop
+{{- end }}
