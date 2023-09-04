@@ -1,0 +1,55 @@
+{{if .Values.global.simphera.keycloak.enabled }}
+
+# Hostname
+{{if not .Values.global.simphera.hostnames.keycloak }}
+  {{ fail "Required value not set: global.simphera.hostnames.keycloak" }}
+{{end}}
+
+# Certificate
+{{if and .Values.global.simphera.ingress.sslRedirect (not .Values.global.simphera.tlsCertificates.keycloak) }}
+  {{ fail "Required value not set: global.simphera.tlsCertificates.keycloak" }}
+{{end}}
+
+# Authentication
+{{if .Values.global.simphera.keycloak.adminSecret }}
+  {{if .Values.global.simphera.keycloak.adminUsername }}
+    {{ fail "You must not specify both 'global.simphera.keycloak.adminSecret' and 'global.simphera.keycloak.adminUsername'." }}
+  {{end}}
+  {{if .Values.global.simphera.keycloak.adminPassword }}
+    {{ fail "You must not specify both 'global.simphera.keycloak.adminSecret' and 'global.simphera.keycloak.adminPassword'." }}
+  {{end}}
+{{else}}
+  {{if not .Values.global.simphera.keycloak.adminUsername }}
+    {{ fail "Required value not set: global.simphera.keycloak.adminUsername" }}
+  {{end}}
+  {{if not .Values.global.simphera.keycloak.adminPassword }}
+    {{ fail "Required value not set: global.simphera.keycloak.adminPassword" }}
+  {{end}}
+{{end}}
+
+# Database
+{{if not .Values.global.simphera.databases.keycloak.pgDatabase }}
+  {{ fail "Required value not set: global.simphera.databases.keycloak.pgDatabase" }}
+{{end}}
+{{if not .Values.global.simphera.databases.keycloak.pgHost }}
+  {{ fail "Required value not set: global.simphera.databases.keycloak.pgHost" }}
+{{end}}
+{{if not .Values.global.simphera.databases.keycloak.pgHost }}
+  {{ fail "Required value not set: global.simphera.databases.keycloak.pgHost" }}
+{{end}}
+{{if .Values.global.simphera.databases.keycloak.secret }}
+  {{if .Values.global.simphera.databases.keycloak.pgUsername }}
+    {{ fail "You must not specify both 'global.simphera.databases.keycloak.secret' and 'global.simphera.databases.keycloak.pgUsername'." }}
+  {{end}}
+  {{if .Values.global.simphera.databases.keycloak.pgPassword }}
+    {{ fail "You must not specify both 'global.simphera.databases.keycloak.secret' and 'global.simphera.databases.keycloak.pgPassword'." }}
+  {{end}}
+{{else}}
+  {{if not .Values.global.simphera.databases.keycloak.pgUsername }}
+    {{ fail "Required value not set: global.simphera.databases.keycloak.pgUsername" }}
+  {{end}}
+  {{if not .Values.global.simphera.databases.keycloak.pgPassword }}
+    {{ fail "Required value not set: global.simphera.databases.keycloak.pgPassword" }}
+  {{end}}
+{{end}}
+{{end}}

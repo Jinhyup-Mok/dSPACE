@@ -1,0 +1,55 @@
+global:
+  simphera:
+    image:
+      pullSecrets: []
+
+      thirdparty:
+        # It is intented that the repository is set to 'null' because the single source of the
+        # default value is the values.yaml file of the Quickstart chart.
+        keycloak: null
+
+    linuxNodes:
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations: []
+
+    hostnames:
+      keycloak: null
+
+    tlsCertificates:
+      keycloak: null
+
+    keycloak:
+      enabled: false
+
+      # Either adminUsername/adminPassword has to be specified or the name of an existing secret.
+      # An existing secret must use the keys 'username' and 'password'.
+      adminUsername: null
+      adminPassword: null
+      adminSecret: null
+
+    baseUrls:
+      keycloak: null
+
+    databases:
+      keycloak:
+        pgDatabase: null
+        pgHost: null
+        pgPort: 5432
+        pgUsername: null
+        pgPassword: null
+        secret: null
+
+    serviceAccounts:
+      simphera: null
+
+    log:
+      level: INFO
+
+resources:
+  requests:
+    memory: 500Mi
+    cpu: 10m
+  limits:
+    memory: 1Gi
+    cpu: 1
