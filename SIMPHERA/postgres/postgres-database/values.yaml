@@ -1,0 +1,86 @@
+global:
+  simphera:
+
+    databases:
+      simphera:
+        pgDatabase: simphera
+        pgHost: simphera-postgresql
+        pgPort: 5432
+        pgUsername: postgres
+      keycloak:
+        pgDatabase: keycloak
+        pgHost: simphera-postgresql
+        pgPort: 5432
+
+    keycloak:
+      enabled: false
+
+
+postgresql:
+  enabled: true
+
+  fullnameOverride: simphera-postgresql
+  postgresqlDatabase: simphera
+  postgresqlUsername: null
+  postgresqlPassword: null
+
+  persistence:
+    enabled: false
+
+  primary:
+    nodeSelector:
+      kubernetes.io/os: linux
+
+  initdbScriptsConfigMap: postgresql-init-scripts-configmap
+
+  audit:
+    logHostname: true
+    logConnections: true
+    logDisconnections: true
+
+  postgresqlExtendedConf: {
+    # PostgreSQL uses 'double buffering', meaning that PostgreSQL uses its own internal buffer as well as kernel buffered IO. In short, this means that data is stored in memory twice.
+    # shared_buffers should be roughly 25% of the total system RAM for a dedicated DB server.
+    "shared_buffers": "512MB", # default 128MB
+    # effective_cache_size is used only by the PostgreSQL query planner to figure out whether plans it's considering would be expected to fit in RAM or not
+    # A conservative value for  effective_cache_size  would be 1/2 of the total memory available on the system.
+    # If the value for effective_cache_size is too low, then the query planner may decide not to use some indexes, even if they would help greatly increase query speed.
+    "effective_cache_size": "4GB", # default 4 GB
+    # work_mem specifies the amount of memory available to be used by internal sort operations and hash tables before writing data to disk.
+    # Note that for a complex query, several sort or hash operations might be running in parallel; each operation will be allowed to use as much memory as this value specifies before it starts to write data into temporary files.
+    # Also, several running sessions could be doing such operations concurrently.
+    # Therefore, the total memory used could be many times the value of work_mem;
+    # It’s tough to get the right value for work_mem perfect, but often a sane default can be something like 64 MB, if you’re looking for a one size fits all answer.
+    "work_mem": "16MB", # default 4 MB
+    # Specifies the maximum amount of memory to be used by maintenance operations, such as VACUUM, CREATE INDEX, and ALTER TABLE ADD FOREIGN KEY
+    # Since only one of these operations can be executed at a time by a database session, and an installation normally doesn't have many of them running concurrently, it's safe to set this value significantly larger than work_mem.
+    # Larger settings might improve performance for vacuuming and for restoring database dumps.
+    "maintenance_work_mem": "64MB", # default 64 MB
+  }
+
+pgadmin4:
+  enabled: true
+
+  env:
+    email: null
+    password: null
+
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  existingSecret: simphera-pgadmin4-credentials
+
+  persistentVolume:
+    enabled: false
+
+  serverDefinitions:
+    enabled: true
+
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        proxy_set_header X-Script-Name /pgadmin4;
+      nginx.ingress.kubernetes.io/proxy-redirect-from: ~^http://([^/]+)/(pgadmin4/)?(.*)$
+      nginx.ingress.kubernetes.io/proxy-redirect-to: https://$1/pgadmin4/$3

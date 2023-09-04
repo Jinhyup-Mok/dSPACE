@@ -1,0 +1,9 @@
+dependencies:
+- name: postgresql
+  repository: oci://wtcdev.azurecr.io/helm-charts
+  version: 10.13.6
+- name: pgadmin4
+  repository: oci://wtcdev.azurecr.io/helm-charts
+  version: 1.13.6
+digest: sha256:0bd926f706fc44c990187434b036ab71a30183f95c5ff7c574d3af90a7e94991
+generated: "2023-08-03T10:14:29.5165708+09:00"

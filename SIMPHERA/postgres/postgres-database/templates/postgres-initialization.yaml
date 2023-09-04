@@ -1,0 +1,10 @@
+# This ConfigMap defines the initialization script of the Postgres database
+# Source: https://tfs.dspace.de/tfs/DefaultCollection/SIMPHERA/_git/nwtc?path=%2Fdeploy%2Fk8s%2Fhelm%2Fsimphera-internal%2Ftemplates%2Fpostgres-initialization.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-init-scripts-configmap
+  namespace: mysimphera
+data:
+  init-required-dbs.sql:
+    CREATE DATABASE keycloak ENCODING UTF8; CREATE DATABASE simphera ENCODING UTF8;

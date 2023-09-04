@@ -1,0 +1,13 @@
+apiVersion: v2
+name: postgres-database
+version: 0.1
+description: Umbrella to install postgresql and pgadmin4
+dependencies:
+- name: postgresql
+  version: 10.13.6
+  repository: oci://wtcdev.azurecr.io/helm-charts
+  condition: postgresql.enabled
+- name: pgadmin4
+  version: 1.13.6
+  repository: oci://wtcdev.azurecr.io/helm-charts
+  condition: pgadmin4.enabled

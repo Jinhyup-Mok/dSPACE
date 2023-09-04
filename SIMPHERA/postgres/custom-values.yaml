@@ -1,0 +1,34 @@
+# custom values for Postgres DB + pgAdmin4
+global:
+  simphera:
+
+    keycloak:
+      enabled: true
+
+postgresql:
+  enabled: true
+  postgresqlUsername: postgres
+  postgresqlPassword: 100%postgres
+
+  # create pv for postgres
+  persistence:
+    enabled: true
+    storageClass: hostpath
+    size: 8Gi
+
+pgadmin4:
+  enabled: true
+  env:
+    email: admin@dspace.kr
+    password: 100%postgres
+
+  ingress:
+    hosts:
+      - host: "mysimphera.dspace.cloud"
+        paths:
+          - path: /pgadmin4
+            pathType: Prefix
+    tls:
+      - secretName: "https-certificate"
+        hosts:
+          - "mysimphera.dspace.cloud"
